@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <string>
 
 #pragma comment(lib, "winmm.lib")
 
@@ -204,6 +205,8 @@ struct Bmp {
     uint32_t end_height;
     uint32_t start_width;
     uint32_t end_width;
+    std::ofstream *file;
+    int thread_number;
 };
 
 void blur(bitmap* bmp_first, bitmap* bmp_second, int radius, Bmp* bmp)
@@ -240,6 +243,8 @@ void blur(bitmap* bmp_first, bitmap* bmp_second, int radius, Bmp* bmp)
             pixel->r = std::round(r / count);
             pixel->g = std::round(g / count);
             pixel->b = std::round(b / count);
+
+            *bmp->file << bmp->thread_number << " " << (int)(timeGetTime() - startTime) << std::endl;
         }
     }
 }
@@ -264,6 +269,20 @@ int main(int argc, const char* argv[])
 {
     startTime = timeGetTime();
 
+    if (strcmp(argv[1], "/") == 0) {
+        std::cout << "Arguments example: C:\\Users\\Anna\\Desktop\\image.bmp C:\\Users\\Anna\\Desktop\\image-save.bmp 3 1 0 0 0 \n"
+        "1 argument : input file \n"
+        "2 argument : output file \n"
+        "3 argument : threads count \n"
+        "4 argument : cores number \n"
+        "Priority:\n `-1` - below_normal;\n `0` - normal;\n `1` - above_normal \n"
+        "5 argument : first thread priority \n"
+        "6 argument : second thread priority \n"
+        "7 argument : third thread priority" << std::endl;
+
+        exit(0);
+    }
+
     bitmap bmp1{ argv[1] };
     bitmap bmp2{ argv[1] };
 
@@ -272,22 +291,34 @@ int main(int argc, const char* argv[])
     int littleWidth = bmp1.getWidth() / count;
     int littleHeight = bmp1.getHeight() / count;
 
+    std::ofstream* files = new std::ofstream[count];
+
     Bmp* arrayBmp = new Bmp[count];
     for (int i = 0; i < count; i++) {
         Bmp bmp;
+        std::string name = "output" + std::to_string(i) + ".txt";
+        files[i] = std::ofstream(name);
         bmp.bmp_first = &bmp1;
         bmp.bmp_second = &bmp2;
         bmp.index = i;
         bmp.little_weight = littleWidth;
         bmp.little_height = littleHeight;
         bmp.count = count;
+        bmp.file = &files[i];
+        bmp.thread_number = i;
         arrayBmp[i] = bmp;
+    }
+
+    int* priorities = new int[count];
+    for (int i = 0; i < count; i++) {
+        priorities[i] = atoi(argv[i + 5]);
     }
 
     HANDLE* handles = new HANDLE[count];
     for (int i = 0; i < count; i++) {
         handles[i] = CreateThread(NULL, 0, &ThreadProc, &arrayBmp[i], CREATE_SUSPENDED, NULL);
         SetThreadAffinityMask(handles[i], (1 << atoi(argv[4])) - 1);
+        SetThreadPriority(handles[i], priorities[i]);
     }
 
     for (int i = 0; i < count; i++) {
@@ -297,8 +328,6 @@ int main(int argc, const char* argv[])
     WaitForMultipleObjects(count, handles, true, INFINITE);
 
     bmp2.save(argv[2]);
-
-    std::cout << (int)(timeGetTime() - startTime) << std::endl;
 
     return 0;
 }
